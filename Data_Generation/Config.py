@@ -96,4 +96,4 @@ QUALITY = {
 # =====================================================================
 # OUTPUT PATHS
 # =====================================================================
-OUTPUT_DIR = "./Data/Raw_data"   # All generated files land here
+OUTPUT_DIR = "./Data"   # All generated files land here
