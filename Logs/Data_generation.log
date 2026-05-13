@@ -1,0 +1,44 @@
+2026-05-01 20:19:02,995 | INFO | ======================================================================
+2026-05-01 20:19:02,996 | INFO | SAMSUNG RAW DATA GENERATION [INDIA]
+2026-05-01 20:19:02,996 | INFO |   Date range : 2022-01-01  to  2025-12-31
+2026-05-01 20:19:02,996 | INFO |   Output dir : ./Data/Raw_data
+2026-05-01 20:19:02,996 | INFO | ======================================================================
+2026-05-01 20:19:03,381 | INFO | [1/14] Completed Creating 'products.json' with 2000 rows in (0.38s)
+2026-05-01 20:19:03,387 | INFO | [2/14] Completed Creating 'warehouses.json' with 25 rows in (0.00s)
+2026-05-01 20:19:23,291 | INFO | [3/14] Completed Creating 'customers.csv' with 200000 rows in (19.90s)
+2026-05-01 20:19:23,865 | INFO | [4/14] Completed Creating 'dealers.csv' with 10000 rows in (0.57s)
+2026-05-01 20:19:24,032 | INFO | [5/14] Completed Creating 'service_centers.json' with 1200 rows in (0.17s)
+2026-05-01 20:19:25,517 | INFO | [6/14] Completed Creating 'campaigns.xlsx' with 1000 rows in (1.48s)
+2026-05-01 20:19:25,568 | INFO | [7/14] Completed Creating 'suppliers.csv' with 500 rows in (0.05s)
+2026-05-01 20:19:33,624 | INFO | [8/14] Completed Creating 'employees.xlsx' with 15000 rows in (8.05s)
+2026-05-01 20:20:16,279 | INFO | [9/14] Completed Creating 'inventory.xlsx' with 100000 rows in (42.66s)
+2026-05-01 20:20:42,849 | INFO | [10/14] Completed Creating 'sales_transactions.csv' with 750000 rows in (26.57s)
+2026-05-01 20:20:55,582 | INFO | [11/14] Completed Creating 'complaints.csv' with 200000 rows in (12.73s)
+2026-05-01 20:21:37,823 | INFO | [12/14] Completed Creating 'returns.xlsx' with 75000 rows in (42.24s)
+2026-05-01 20:22:01,593 | INFO | [13/14] Completed Creating 'financial_transactions.csv' with 650000 rows in (23.77s)
+2026-05-01 20:22:02,705 | INFO | [14/14] Completed Creating 'product_reviews.csv' with 50000 rows in (1.11s)
+
+2026-05-01 20:22:02,705 | INFO | ======================================================================
+2026-05-01 20:22:02,706 | INFO |  GENERATION COMPLETE - File Summary
+2026-05-01 20:22:02,706 | INFO | ======================================================================
+2026-05-01 20:22:02,706 | INFO |   FORMAT  FILE                                          SIZE
+2026-05-01 20:22:02,706 | INFO |   ------  ----------------------------------------  --------
+2026-05-01 20:22:02,707 | INFO |   JSON    products.json                                0.78 MB
+2026-05-01 20:22:02,707 | INFO |   JSON    warehouses.json                              0.01 MB
+2026-05-01 20:22:02,708 | INFO |   JSON    service_centers.json                         0.41 MB
+2026-05-01 20:22:02,708 | INFO |   CSV     customers.csv                               25.47 MB
+2026-05-01 20:22:02,708 | INFO |   CSV     dealers.csv                                  1.15 MB
+2026-05-01 20:22:02,709 | INFO |   CSV     suppliers.csv                                0.06 MB
+2026-05-01 20:22:02,709 | INFO |   CSV     sales_transactions.csv                      78.94 MB
+2026-05-01 20:22:02,709 | INFO |   CSV     complaints.csv                              18.92 MB
+2026-05-01 20:22:02,709 | INFO |   CSV     financial_transactions.csv                  62.70 MB
+2026-05-01 20:22:02,710 | INFO |   CSV     product_reviews.csv                          4.10 MB
+2026-05-01 20:22:02,710 | INFO |   XLSX    campaigns.xlsx                               0.07 MB
+2026-05-01 20:22:02,710 | INFO |   XLSX    employees.xlsx                               1.02 MB
+2026-05-01 20:22:02,710 | INFO |   XLSX    inventory.xlsx                               4.52 MB
+2026-05-01 20:22:02,711 | INFO |   XLSX    returns.xlsx                                 5.33 MB
+2026-05-01 20:22:02,711 | INFO |   ------  ----------------------------------------  --------
+2026-05-01 20:22:02,711 | INFO |   TOTAL                                              203.48 MB
+2026-05-01 20:22:02,711 | INFO |   Total generation time : 179.71s
+2026-05-01 20:22:02,711 | INFO |   Output dir : ./Data/Raw_data
+2026-05-01 20:22:02,711 | INFO | ======================================================================
