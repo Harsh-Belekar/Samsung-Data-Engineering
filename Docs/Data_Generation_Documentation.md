@@ -574,3 +574,146 @@ rm Logs/Data_generation.log
 ```
 
 ---
+
+## 12. ➕ EXTENDING THE PROJECT
+
+### Add a New Table
+
+1. Create a new generator class in the appropriate `Generators/` file (or a new file).
+2. Follow the standard two-method interface — every generator in the project uses this pattern:
+
+```python
+class MyNewGenerator:
+    def __init__(self, out_dir: str, ...foreign_key_pools...):
+        self.n        = ROW_COUNTS["my_new_table"]
+        self.out_path = f"{out_dir}/my_new_table.csv"
+
+    def generate(self) -> pd.DataFrame:
+        # build and return DataFrame here
+        ...
+
+    def save(self, df: pd.DataFrame) -> None:
+        df.to_csv(self.out_path, index=False)
+```
+
+3. Add the row count key to `ROW_COUNTS` in `Config.py`.
+4. Add the generation step to `Main.py` in the correct dependency order.
+
+### Add New Samsung Products
+
+Edit the `SAMSUNG_PRODUCTS` list in `Master_Data.py`:
+
+```python
+# (SKU, name, category, subcategory, MRP_INR, RAM_GB, storage_GB, display_inches)
+("SM-XXXXXXXX", "Galaxy S26", "Smartphones", "Galaxy S Series", 89999, 8, 256, "6.3"),
+```
+
+### Add New Cities
+
+Edit the `CITIES_STATES` list in `Master_Data.py`:
+
+```python
+# (city, state, pincode)
+("Dehradun", "Uttarakhand", "248001"),
+("Shimla",   "Himachal Pradesh", "171001"),
+```
+
+### Change Output Format (e.g. CSV → Parquet)
+
+Only the `save()` method of the relevant generator needs to change:
+
+```python
+# Before — CSV
+def save(self, df: pd.DataFrame) -> None:
+    df.to_csv(self.out_path, index=False)
+
+# After — Parquet (faster for large tables, smaller file size)
+def save(self, df: pd.DataFrame) -> None:
+    df.to_parquet(self.out_path.replace(".csv", ".parquet"), index=False)
+```
+
+No other file needs to be modified.
+
+### Scale Up to 10 Million Rows
+
+Increase the row counts in `Config.py`. For very large scales, also consider:
+
+- Switching all `.xlsx` tables to `.csv` or `.parquet` — `openpyxl` is slow beyond 500K rows
+- Reducing `DATE_FORMATS` variants in `Config.py` to speed up vectorised date generation
+- Using chunked CSV writing with pandas `chunksize` for the largest tables
+
+---
+
+## 13. ❓ FREQUENTLY ASKED QUESTIONS
+
+#### Q1: Can I run only specific tables instead of all 14?
+
+**Ans:** Not directly — `Main.py` runs all steps in a fixed dependency order. However, you can comment out any step in `Main.py` as long as its downstream tables are also commented out. For example, if you skip Step 3 (customers), you must also skip Steps 10, 11, 12, and 14 since they all require cust_ids.
+
+#### Q2: Will I get the same data every time I run?
+
+**Ans:** Yes, as long as NUMPY_SEED and RANDOM_SEED in `Config.py` are unchanged (both default to 42). Every run with the same seed produces byte-for-byte identical output files. Change either seed value to produce a completely different dataset.
+
+#### Q3: Can I generate data for a different company — not Samsung?
+
+**Ans:** Yes. The only Samsung-specific content is in `Master_Data.py` — the product catalogue (SAMSUNG_PRODUCTS), retail chains (RETAIL_CHAINS), and campaign names (CAMPAIGN_NAMES). Replace those lists with your own company's data and everything else — customers, transactions, complaints, finance — will generate correctly around your new master data.
+
+#### Q4: Why are some row counts in the output slightly higher than the target in `Config.py`?
+
+**Ans:** Two tables — returns.xlsx and financial_transactions.csv — have duplicate rows intentionally injected after generation (3% and 2% respectively). So if ROW_COUNTS["returns"] is 75,000, the actual file will contain approximately 77,250 rows. This is by design. The log records the actual row count written.
+
+#### Q5: The customers.csv step takes 10+ seconds. Is that normal?
+
+**Ans:** Yes. Generating 200,000 customers involves per-row operations — random phone number generation, email construction, and PIN validation — that cannot be fully vectorised. On most laptops this step takes 8–15 seconds. It is the slowest reference-table step. If speed is critical, reduce ROW_COUNTS["customers"] or pre-generate the phone/email columns using a vectorised approach in `Utils.py`.
+
+#### Q6: Can I add a new column to an existing table without breaking anything?
+
+**Ans:** Yes. Add the column inside the generate() method of the relevant generator class — it will appear in the output file automatically. No other file needs to change unless another generator depends on that column as a foreign key.
+
+#### Q7: Why is warehouses.json always exactly 25 rows even if I change ROW_COUNTS["warehouses"]?
+
+**Ans:** The warehouse table is generated from a fixed WAREHOUSE_DATA list inside Products_Warehouses.py, not from the row count config. This is intentional — Samsung India has a fixed number of real warehouses. To add warehouses, add new tuples to the WAREHOUSE_DATA list directly in that file.
+
+#### Q8: Can I use this data for a portfolio project or interview case study?
+
+**Ans:** Absolutely. The data is entirely synthetic. All names, phone numbers, GSTINs, email addresses, and transaction IDs are computer-generated and have no connection to real individuals or businesses. Clearly note in your project that the dataset is synthetic and generated for data engineering practice.
+
+#### Q9: Why does inventory.xlsx have negative qty_available values?
+
+**Ans:** This is intentional messiness simulating an over-allocation bug in a Warehouse Management System — a real problem in enterprise inventory data. Your Silver Layer cleaning pipeline should detect and handle these negative values (either zero-floor them, flag them for review, or exclude them from stock calculations depending on your business rule).
+
+#### Q10: I changed DATE_START and DATE_END in `Config.py` but some dates in the output are outside my range.
+
+**Ans:** Check two things. First, some generators have hardcoded date ranges for non-transactional fields that are independent of the global range — for example, employees.join_date always spans 2010–2024 regardless of DATE_START/DATE_END because employee join dates predate the analysis period. 
+Second, the contract_start column in suppliers.csv also uses a fixed historical range. Only transactional tables (sales, complaints, returns, finance, reviews, inventory) use the global date range from `Config.py`.
+
+---
+
+## 📄 LICENSE
+
+This data generation scripts is provided for educational and portfolio purposes.
+
+---
+
+# ⚠️ Dataset Disclaimer  
+All datasets used are **dummy, synthetic, or public**, intended only for learning and portfolio demonstration.  
+No real customer or company data is used.
+
+**Last Updated:** May 2026  
+**Version:** 1.0
+
+---
+
+## 🧑‍💻 Author
+
+**👤 Harsh Belekar**  
+📍 Data Analyst | Python Developer | SQL | Power BI | Excel | Data Visualization  
+📬[LinkedIn](https://www.linkedin.com/in/harshbelekar) | 🔗[GitHub](https://github.com/Harsh-Belekar)
+
+📧 [harshbelekar74@gmail.com](mailto:harshbelekar74@gmail.com)
+
+---
+
+⭐ *If you found this project helpful, feel free to star the repo and connect with me for collaboration!*
+
+**Happy Data Generating! 🚀**
