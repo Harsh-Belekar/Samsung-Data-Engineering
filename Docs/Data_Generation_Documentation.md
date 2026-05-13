@@ -388,3 +388,189 @@ python Main.py
 | **Total** | **~300 – 350 MB** |
 
 ---
+
+## 9. 📋 LOGS
+
+Every run appends to `Logs/Data_generation.log`. The `Logs/` folder is created automatically on first run — no manual setup needed.
+
+### What Gets Logged
+
+- **Run start** — timestamp, date range, output directory
+- **Each step** — file name, target row count, actual rows written, time taken in seconds
+- **Final summary** — all 14 file sizes in MB, total dataset size, total elapsed time
+- **Errors** — full Python traceback if any step fails, diagnosable without re-running
+
+### Sample Log Output
+
+```
+2025-01-15 10:23:01 | INFO | ======================================================================
+2025-01-15 10:23:01 | INFO | SAMSUNG RAW DATA GENERATION [INDIA]
+2025-01-15 10:23:01 | INFO | Date range : 2022-01-01  to  2025-12-31
+2025-01-15 10:23:01 | INFO | Output dir : ./Data/Raw_data
+2025-01-15 10:23:02 | INFO | [1/14] Completed Creating 'products.json' with 2,000 rows in (0.41s)
+2025-01-15 10:23:02 | INFO | [2/14] Completed Creating 'warehouses.json' with 25 rows in (0.01s)
+2025-01-15 10:23:13 | INFO | [3/14] Completed Creating 'customers.csv' with 200,000 rows in (10.62s)
+...
+2025-01-15 10:26:44 | INFO | GENERATION COMPLETE — File Summary
+2025-01-15 10:26:44 | INFO |   CSV     sales_transactions.csv                    87.40 MB
+2025-01-15 10:26:44 | INFO |   TOTAL                                            318.74 MB
+2025-01-15 10:26:44 | INFO |   Total generation time : 222.14s
+2025-01-15 10:26:44 | INFO | ======================================================================
+```
+
+> **Note:** Each run **appends** to the same log file — it does not overwrite. Delete or archive `Data_generation.log` manually before a fresh run if you want a clean log history.
+
+---
+
+## 10. 🔗 DEPENDENCY CHAIN
+
+Generator classes pass ID pools to downstream generators as constructor arguments. **The order in `Main.py` must be preserved** — changing it will cause `KeyError` or empty foreign-key columns.
+
+```
+[Step 1]  ProductGenerator      → pid_pool  ───────────────────────────────────┐
+[Step 2]  WarehouseGenerator    → wh_ids    ──────────────────────┐            │
+[Step 3]  CustomerGenerator     → cust_ids  ──────────┐           │            │
+[Step 4]  DealerGenerator       → dealer_ids   ──┐    │           │            │
+                                                  │    │           │            │
+[Step 5]  ServiceCenterGenerator  (no FK output)  │    │           │            │
+[Step 6]  CampaignGenerator       (no FK output)  │    │           │            │
+[Step 7]  SupplierGenerator       (no FK output)  │    │           │            │
+[Step 8]  EmployeeGenerator       (no FK output)  │    │           │            │
+                                                  │    │           │            │
+[Step 9]  InventoryGenerator   ←──────────────────┼────┼── wh_ids + pid_pool   │
+[Step 10] SalesTransactionGenerator ←─────────────┘    └── cust_ids + pid_pool │
+             → txn_ids ──────────────────┐                                     │
+[Step 11] ComplaintGenerator   ←── cust_ids + pid_pool                         │
+[Step 12] ReturnGenerator      ←── txn_ids + cust_ids + pid_pool               │
+[Step 13] FinancialTransactionGenerator ←── txn_ids                            │
+[Step 14] ProductReviewGenerator ←── cust_ids + pid_pool ──────────────────────┘
+```
+
+**The critical path is Steps 1 → 3 → 4 → 10.** Products, Customers, and Dealers must all complete before Sales Transactions. Everything downstream of Step 10 depends on `txn_ids`.
+
+---
+
+## 11. 🛠️ TROUBLESHOOTING
+
+### Installation & Setup Errors
+
+#### 1. ModuleNotFoundError: No module named `openpyxl`
+
+The most common error. `openpyxl` is not installed in your Python environment.
+
+```bash 
+pip install openpyxl
+```
+
+If you are using a virtual environment, make sure it is activated before running the install.
+
+---
+
+#### 2. ModuleNotFoundError: No module named `Config`
+
+Python cannot find `Config.py`. This happens when you run `Main.py` from a different directory than the project root.
+
+```bash
+# ❌ Wrong — running from outside the project folder
+python "C:\Projects\Samsung Data Engineering\Data Generation\Main.py"
+
+# ✅ Correct — navigate into the project folder first
+cd "C:\Projects\Samsung Data Engineering\Data Generation"
+python Main.py
+```
+
+---
+
+#### 3. ModuleNotFoundError: No module named `Generators.Products_Warehouses`
+
+The `Generators/` folder is missing its` __init__.py` file, or the folder itself is not in the same directory as `Main.py`.
+
+**Check your folder structure:**
+```
+Samsung Data Engineering/
+├── Main.py
+├── Generators/
+│   ├── __init__.py       ← This file must exist
+│   ├── Products_Warehouses.py
+│   └── ...
+```
+
+**If `__init__.py` is missing, create an empty one:**
+
+```bash
+# Windows
+type nul > Generators\__init__.py
+
+# Mac / Linux
+touch Generators/__init__.py
+```
+
+---
+
+### Runtime Errors
+
+#### 1. Generation stops at Step 6 — `campaigns.xlsx` with no error message
+
+This is almost always the `openpyxl` missing error caught silently. Run:
+
+```bash
+pip install openpyxl
+python Main.py
+```
+
+---
+
+#### 2. PermissionError: [Errno 13] Permission denied: `./Data/Raw_data/customers.csv`
+
+The output file is currently open in Excel or another program. Close the file and re-run.
+
+---
+
+#### 3. `MemoryError` during large table generation
+
+Your machine does not have enough RAM to hold the full DataFrame in memory. Try reducing the row count in `Config.py`:
+
+```python
+# Config.py — reduce the largest tables first
+ROW_COUNTS = {
+    "sales_transactions"     : 300_000,   # Reduced from 750,000
+    "financial_transactions" : 250_000,   # Reduced from 650,000
+    "complaints"             : 100_000,   # Reduced from 200,000
+    "customers"              : 100_000,   # Reduced from 200,000
+    "inventory"              :  50_000,   # Reduced from 100,000
+}
+```
+
+---
+
+#### 4. `ValueError: could not convert string to float` during downstream analysis
+
+This is expected — the Bronze Layer intentionally contains messy values like `"USD 82999"`, `"18 LPA"`, and `"18%"`. These columns need to be cleaned in the Silver Layer before any numeric operations. Do not modify the generator — fix the column in your cleaning pipeline.
+
+---
+
+#### 5. `FileNotFoundError`: [Errno 2] No such file or directory: `'./Data/Raw_data/...'`
+
+The output directory does not exist and could not be created, usually due to a path permission issue. Either create the folder manually or change `OUTPUT_DIR` in `Config.py` to a path you have write access to:
+
+```python
+# Config.py
+OUTPUT_DIR = "C:/Users/YourName/Desktop/Samsung_Output"
+```
+
+---
+
+### Log File Issues
+
+#### 1. The log file is too large after many runs
+The log file appends on every run and never auto-clears. Archive or delete it manually before a fresh run:
+
+```bash
+# Windows
+del Logs\Data_generation.log
+
+# Mac / Linux
+rm Logs/Data_generation.log
+```
+
+---
