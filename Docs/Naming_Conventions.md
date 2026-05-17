@@ -70,3 +70,45 @@ This document outlines the Naming Conventions used for schemas, tables, views, c
 | `agg_`   | Aggregated table                     | `agg_orders`, `agg_order_items`   |
 
 ---
+
+## 🏷️ Column Naming Conventions
+
+### #️⃣ Surrogate Keys 
+
+- All primary keys in dimension tables must use the suffix `_id`.
+
+- **`<table_name>_id`**  
+  - `<table_name>`: Refers to the name of the table or entity the key belongs to.  
+  - `_key`: A suffix indicating that this column is a surrogate key.  
+  - *Example:* `customer_id` → Surrogate key in the `dim_customers` table.
+
+### 🖥️ Technical Columns
+
+- All technical columns must start with the prefix `dwh_`, followed by a descriptive name indicating the column's purpose.
+
+- **`dwh_<column_name>`**  
+  - `dwh`: Prefix exclusively for system-generated metadata.  
+  - `<column_name>`: Descriptive name indicating the column's purpose.  
+  - *Example:* `dwh_load_date` → System-generated column used to store the date when the record was loaded.
+
+---
+
+## 💾 Stored Procedure
+
+- All stored procedures used for loading data must follow the naming pattern:
+
+- **`load_<layer>`**.
+  - `<layer>`: Represents the layer being loaded, such as `bronze`, `silver`, or `gold`.
+  - *Example:*
+    - `load_bronze` → Stored procedure for loading data into the Bronze layer.
+    - `load_silver` → Stored procedure for loading data into the Silver layer.
+
+---
+
+## 🧑‍💻 Author
+
+**👤 Harsh Belekar**  
+📍 Data Analyst | Python Developer | SQL | Power BI | Excel | Data Visualization  
+📬[LinkedIn](https://www.linkedin.com/in/harshbelekar) | 🔗[GitHub](https://github.com/Harsh-Belekar)
+
+📧 [harshbelekar74@gmail.com](mailto:harshbelekar74@gmail.com)
