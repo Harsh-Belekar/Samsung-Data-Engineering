@@ -98,3 +98,45 @@ The Gold layer does not store pre-aggregated data. It does not contain mart tabl
 ![Warehouse Architecture](../Images/Data_Warehouse_Architecture.png)
 
 ---
+
+## 3. 🏷️ SILVER DOMAIN PREFIX REFERENCE
+
+Silver layer tables are named with a **3-letter domain prefix** that indicates which business domain owns the data. Gold views map directly onto these Silver tables.
+
+| Prefix | Domain | Business Area | Silver Tables |
+|---|---|---|---|
+| `hrm_` | Human Resources & Marketing | People + Campaigns + Products | `hrm_products`, `hrm_employees`, `hrm_campaigns` |
+| `sci_` | Supply Chain & Inventory | Warehouses + Suppliers + Stock | `sci_warehouses`, `sci_suppliers`, `sci_inventory` |
+| `as2_` | After-Sales Service | Complaints + Returns + Centres | `as2_service_centers`, `as2_complaints`, `as2_returns` |
+| `crm_` | Customer Relationship | Customers + Reviews | `crm_customers`, `crm_product_reviews` |
+| `snd_` | Sales & Distribution | Transactions + Dealers | `snd_dealers`, `snd_sales_transactions` |
+| `fip_` | Finance & Payments | Payments + GST | `fip_financial_transactions` |
+
+> **Note for analysts:** You never need to query Silver directly. All Silver tables are fully exposed through Gold views with clean, business-friendly column names.
+
+---
+
+## 4. 🗺️ GOLD LAYER — SCHEMA
+
+![Warehouse Schema](../Images/Schema.png)
+
+### Views at a Glance
+
+| View Name | Type | Rows (approx.) | Source Silver Table | Business Domain |
+|---|---|---|---|---|
+| `dim_products` | Dimension | 2,000 | `hrm_products` | Product Catalogue |
+| `dim_warehouses` | Dimension | 25 | `sci_warehouses` | Supply Chain |
+| `dim_service_centers` | Dimension | 1,200 | `as2_service_centers` | After-Sales |
+| `dim_customers` | Dimension | 200,000 | `crm_customers` | CRM |
+| `dim_dealers` | Dimension | 10,000 | `snd_dealers` | Sales |
+| `dim_suppliers` | Dimension | 500 | `sci_suppliers` | Procurement |
+| `dim_campaigns` | Dimension | 1,000 | `hrm_campaigns` | Marketing |
+| `dim_employees` | Dimension | 15,000 | `hrm_employees` | HR |
+| `fact_inventory` | Fact | 100,000 | `sci_inventory` | Supply Chain |
+| `fact_sales_transactions` | Fact | 750,000 | `snd_sales_transactions` | Sales |
+| `fact_complaints` | Fact | 200,000 | `as2_complaints` | After-Sales |
+| `fact_returns` | Fact | ~77,250 | `as2_returns` | After-Sales |
+| `fact_financial_transactions` | Fact | ~663,000 | `fip_financial_transactions` | Finance |
+| `fact_product_reviews` | Fact | 50,000 | `crm_product_reviews` | CRM |
+
+---
