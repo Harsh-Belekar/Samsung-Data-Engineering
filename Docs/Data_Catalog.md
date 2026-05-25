@@ -37,3 +37,64 @@
 9. [Data Governance](#9--data-governance)
 
 ---
+
+## 1. 🚀 CATALOG OVERVIEW
+
+This Data Catalog is the **single source of truth** for every analyst, data scientist, and Power BI developer working with Samsung India's Gold layer. It documents every view, every column, every data type, and every business rule applied during the Silver → Gold transformation.
+
+The Gold layer is implemented as **PostgreSQL views** — not physical tables. Every query against a Gold view reads live, cleaned data directly from the Silver layer in real time. This means the Gold layer is always current and requires no scheduled refresh job.
+
+**What the Gold layer is designed for:**
+
+The Gold layer serves two consumer groups simultaneously. The first group is **Power BI dashboard developers** who connect directly to Gold views to build revenue dashboards, after-sales health reports, and inventory monitoring panels. The second group is **SQL analysts** who write ad-hoc queries against Gold views to answer business questions without needing to understand the underlying Bronze messiness or Silver cleaning logic.
+
+**What the Gold layer is NOT:**
+
+The Gold layer does not store pre-aggregated data. It does not contain mart tables, rollups, or KPI summaries — those belong in a separate analytical layer above Gold. Every row in a Gold fact view corresponds to exactly one source transaction.
+
+---
+
+## 2. 🏗️ ARCHITECTURE — BRONZE → SILVER → GOLD
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  RAW FILES  (CSV / JSON / XLSX)                         │
+│  14 files · ~2,000,000 rows · Mixed formats & nulls     │
+└────────────────────────┬────────────────────────────────┘
+                         │  Python Generator (Main.py)
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  BRONZE SCHEMA   (bronze.*)                             │
+│  14 tables · All columns TEXT · No constraints          │
+│  Raw ingestion — exactly as received                    │
+└────────────────────────┬────────────────────────────────┘
+                         │  SQL Cleaning Views (cleaning.*)
+                         │  fn_to_boolean · fn_clean_phone
+                         │  fn_parse_date · fn_salary_to_annual
+                         │  fn_parse_gst_pct · Deduplication
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  SILVER SCHEMA   (silver.hrm_* | sci_* | as2_* | ...)   │
+│  14 tables · Typed columns · FK constraints             │
+│  Cleaned, standardised, deduplicated                    │
+└────────────────────────┬────────────────────────────────┘
+                         │  Gold DDL Views (no transformation)
+                         │  Semantic renaming + column selection
+                         ▼
+┌─────────────────────────────────────────────────────────┐
+│  GOLD SCHEMA   (gold.*)                ← YOU ARE HERE   │
+│  14 views · Star Schema                                 │
+│  8 Dimensions + 6 Facts                                 │
+│  Business-ready · Analytics & Reporting                 │
+└─────────────────────────────────────────────────────────┘
+                         │
+              ┌──────────┴──────────┐
+              ▼                     ▼
+       Power BI Reports      Ad-hoc SQL Analysis
+```
+
+### Data Warehouse Architecture
+
+![Warehouse Architecture](../Images/Data_Warehouse_Architecture.png)
+
+---
