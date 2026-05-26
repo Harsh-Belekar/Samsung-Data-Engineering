@@ -426,3 +426,278 @@ Dimension tables provide the **descriptive context** for every metric in the fac
 | ESG & Sustainability | Environmental, social, governance |
 
 ---
+
+## 6. 📊 FACT TABLES
+
+Fact tables store the **measurable business events** — transactions, complaints, returns, payments, and reviews. Each row represents one event. Facts are joined to dimensions to add descriptive context.
+
+---
+
+### 6.1 `fact_inventory`
+
+**Purpose:** Daily stock snapshots showing how many units of each product are available at each warehouse at a point in time.
+
+**Source:** `silver.sci_inventory`
+**Primary Key:** `inventory_id`
+**Row Grain:** One snapshot record = one product at one warehouse on one date
+**Approximate Rows:** 100,000
+
+#### Foreign Keys
+
+| Column | References | Join Type |
+|---|---|---|
+| `product_id` | `dim_products.product_id` | INNER JOIN |
+| `warehouse_id` | `dim_warehouses.warehouse_id` | LEFT JOIN (~3% NULL) |
+
+#### Column Reference
+
+| Column | Data Type | Nullable | Description | Example Value | Notes |
+|---|---|---|---|---|---|
+| `inventory_id` | VARCHAR(10) | NOT NULL | Unique snapshot record identifier | `INV0000001` | PK. Format: INV + 7-digit number |
+| `product_id` | VARCHAR(10) | NOT NULL | Product being tracked | `PROD0001` | FK → `dim_products` |
+| `warehouse_id` | VARCHAR(5) | Yes | Warehouse storing this stock | `WH003` | FK → `dim_warehouses`. ~3% NULL — product not assigned to warehouse |
+| `qty_available` | INTEGER | NOT NULL | Units currently in stock | `450` | Cleaned — Bronze negative values zero-floored. Always ≥ 0 in Gold |
+| `qty_reserved` | INTEGER | NOT NULL | Units reserved for pending orders | `32` | |
+| `reorder_level` | INTEGER | Yes | Minimum stock threshold before reorder | `100` | When `qty_available ≤ reorder_level`, reorder is triggered |
+| `last_restocked` | DATE | Yes | Date of most recent stock replenishment | `2024-09-12` | |
+| `snapshot_date` | DATE | NOT NULL | Date this inventory count was recorded | `2024-10-01` | Cleaned — Bronze epoch timestamps converted to DATE |
+
+#### Key Derived Metrics (for SQL/Power BI)
+
+```sql
+-- Net available stock (excluding reserved units)
+qty_available - qty_reserved AS net_available
+
+-- Reorder flag
+CASE WHEN qty_available <= reorder_level THEN 'Reorder Required' ELSE 'OK' END AS stock_status
+```
+
+---
+
+### 6.2 `fact_sales_transactions`
+
+**Purpose:** Samsung India's **primary fact table** — every sales transaction processed between January 2022 and December 2025 across all channels and geographies.
+
+**Source:** `silver.snd_sales_transactions`
+**Primary Key:** `txn_id`
+**Row Grain:** One row = one sales transaction
+**Approximate Rows:** 750,000
+
+> ⚠️ **Important:** Rows with `status = 'Failed'` or `status = 'Cancelled'` have `amount_inr` values that should be **excluded from revenue calculations**. Always filter `WHERE status = 'Completed'` for revenue metrics.
+
+#### Foreign Keys
+
+| Column | References | Join Type |
+|---|---|---|
+| `customer_id` | `dim_customers.customer_id` | INNER JOIN |
+| `product_id` | `dim_products.product_id` | INNER JOIN |
+| `dealer_id` | `dim_dealers.dealer_id` | INNER JOIN |
+
+#### Column Reference
+
+| Column | Data Type | Nullable | Description | Example Value | Notes |
+|---|---|---|---|---|---|
+| `txn_id` | VARCHAR(11) | NOT NULL | Unique transaction identifier | `TXN00000001` | PK. Referenced by `fact_returns` and `fact_financial_transactions` |
+| `customer_id` | VARCHAR(11) | NOT NULL | Purchasing customer | `CUST0000042` | FK → `dim_customers` |
+| `product_id` | VARCHAR(10) | NOT NULL | Product purchased | `PROD0005` | FK → `dim_products` |
+| `dealer_id` | VARCHAR(8) | NOT NULL | Dealer who processed the sale | `DLR00123` | FK → `dim_dealers` |
+| `txn_date` | DATE | NOT NULL | Date the transaction was placed | `2024-10-20` | Cleaned from 6 Bronze date formats. Range: 2022–2025 |
+| `amount_inr` | NUMERIC(12,2) | Yes | Total transaction amount in INR | `82999.00` | Cleaned — Bronze "USD" prefix stripped, negatives removed. ~2% NULL — exclude from revenue totals |
+| `gst_amount` | NUMERIC(10,2) | Yes | GST component of the transaction | `14939.82` | ~3% NULL |
+| `payment_mode` | VARCHAR(20) | Yes | Payment method used | `UPI` | Values: UPI, Credit Card, Debit Card, Net Banking, EMI, Cash on Delivery, Wallet. Cleaned from 11 Bronze variants |
+| `channel` | VARCHAR(30) | NOT NULL | Sales channel | `Flipkart` | Values: Samsung.com, Flipkart, Amazon IN, Croma, Reliance Digital, Vijay Sales, Samsung SmartCafé, Blinkit |
+| `city` | VARCHAR(50) | Yes | Transaction city | `Mumbai` | Customer's city at time of purchase |
+| `state` | VARCHAR(50) | Yes | Transaction state | `Maharashtra` | |
+| `status` | VARCHAR(15) | NOT NULL | Transaction outcome | `Completed` | Values: Completed (78%), Pending (8%), Failed (4%), Returned (4%), Cancelled (3%), and variants |
+
+#### Channel Distribution Reference
+
+| Channel | Share | Type |
+|---|---|---|
+| Flipkart | 28% | Online — E-Commerce |
+| Amazon IN | 22% | Online — E-Commerce |
+| Croma | 12% | Offline — Large Format Retail |
+| Samsung SmartCafé | 9% | Offline — Samsung Owned |
+| Reliance Digital | 10% | Offline — Large Format Retail |
+| Samsung.com | 8% | Online — Samsung Owned |
+| Vijay Sales | 7% | Offline — Modern Retail |
+| Blinkit | 4% | Online — Quick Commerce |
+
+---
+
+### 6.3 `fact_complaints`
+
+**Purpose:** Every customer complaint or after-sales service request raised with Samsung India, with full resolution tracking and CSAT scores.
+
+**Source:** `silver.as2_complaints`
+**Primary Key:** `complaint_id`
+**Row Grain:** One row = one complaint case
+**Approximate Rows:** 200,000
+
+#### Foreign Keys
+
+| Column | References | Join Type |
+|---|---|---|
+| `customer_id` | `dim_customers.customer_id` | INNER JOIN |
+| `product_id` | `dim_products.product_id` | INNER JOIN |
+| `center_id` | `dim_service_centers.center_id` | LEFT JOIN (~small % NULL) |
+
+#### Column Reference
+
+| Column | Data Type | Nullable | Description | Example Value | Notes |
+|---|---|---|---|---|---|
+| `complaint_id` | VARCHAR(11) | NOT NULL | Unique complaint case identifier | `CMP00000001` | PK. Format: CMP + 8-digit number |
+| `customer_id` | VARCHAR(11) | NOT NULL | Customer who raised the complaint | `CUST0000099` | FK → `dim_customers` |
+| `product_id` | VARCHAR(10) | NOT NULL | Product the complaint is about | `PROD0003` | FK → `dim_products` |
+| `center_id` | VARCHAR(6) | Yes | Service centre handling the complaint | `SC0042` | FK → `dim_service_centers` |
+| `complaint_date` | DATE | NOT NULL | Date the complaint was filed | `2024-03-10` | |
+| `issue_type` | VARCHAR(30) | Yes | Nature of the problem | `Battery Drain` | 15 types — see table below. ~2% NULL |
+| `priority` | VARCHAR(10) | Yes | Case urgency level | `High` | Values: Urgent, High, Medium, Low. Cleaned from 9 Bronze encodings. ~3% NULL |
+| `status` | VARCHAR(25) | NOT NULL | Current case status | `Resolved` | Values: Open, In Progress, Resolved, Closed, Escalated, Pending Parts, Awaiting Customer |
+| `resolution_date` | DATE | Yes | Date the case was closed/resolved | `2024-03-15` | NULL for all non-Resolved/Closed cases |
+| `resolution_days` | SMALLINT | Yes | Days taken to resolve the case | `5` | NULL for unresolved cases. Compute SLA compliance against target |
+| `csat_score` | SMALLINT | Yes | Customer satisfaction rating (1–5) | `4` | ~15% NULL — customer did not submit rating. 5 = Very Satisfied |
+| `technician_id` | VARCHAR(8) | Yes | ID of the technician assigned | `TECH0042` | ~8% NULL — case not yet assigned |
+
+#### Issue Type Reference
+
+| Issue Type | Typical Severity |
+|---|---|
+| Screen Damage | High |
+| Battery Drain | Medium |
+| Software Issue | Medium |
+| Camera Issue | Medium |
+| Charging Problem | High |
+| Speaker Issue | Low |
+| Network Issue | High |
+| Water Damage | High |
+| Physical Damage | High |
+| Performance Issue | Medium |
+| Heating Issue | High |
+| Bluetooth Issue | Low |
+| WiFi Issue | Medium |
+| Fingerprint Sensor | Medium |
+| Touch Not Working | High |
+
+---
+
+### 6.4 `fact_returns`
+
+**Purpose:** Every product return processed by Samsung India — including return reason, product condition, refund amount, and whether a replacement was issued.
+
+**Source:** `silver.as2_returns`
+**Primary Key:** `return_id`
+**Row Grain:** One row = one return event
+**Approximate Rows:** ~77,250
+
+> ⚠️ **Deduplication note:** The Bronze source contained ~3% duplicate rows from ETL double-loading. These were removed in the Silver cleaning pipeline. `return_id` is unique in this Gold view.
+
+#### Foreign Keys
+
+| Column | References | Join Type |
+|---|---|---|
+| `txn_id` | `fact_sales_transactions.txn_id` | LEFT JOIN |
+| `customer_id` | `dim_customers.customer_id` | INNER JOIN |
+| `product_id` | `dim_products.product_id` | INNER JOIN |
+| `processed_by` | `dim_employees.employee_id` | LEFT JOIN |
+
+#### Column Reference
+
+| Column | Data Type | Nullable | Description | Example Value | Notes |
+|---|---|---|---|---|---|
+| `return_id` | VARCHAR(10) | NOT NULL | Unique return record identifier | `RET0000001` | PK. Format: RET + 7-digit number |
+| `txn_id` | VARCHAR(11) | Yes | Original sale transaction | `TXN00012345` | FK → `fact_sales_transactions.txn_id`. Join to get original purchase amount |
+| `customer_id` | VARCHAR(11) | NOT NULL | Customer who returned the product | `CUST0000211` | FK → `dim_customers` |
+| `product_id` | VARCHAR(10) | NOT NULL | Product that was returned | `PROD0008` | FK → `dim_products` |
+| `return_date` | DATE | NOT NULL | Date the return was initiated | `2024-11-03` | Cleaned from 6 Bronze date formats |
+| `return_reason` | VARCHAR(50) | Yes | Customer's stated reason for return | `Dead on Arrival` | 10 standard reasons. ~4% NULL, ~3% cleaned from bad values |
+| `condition` | VARCHAR(10) | Yes | Physical condition of returned product | `Good` | Values: Good, Fair, Damaged, Opened, Sealed. Cleaned from 8 Bronze case variants |
+| `refund_amount` | NUMERIC(10,2) | Yes | Amount refunded to customer in INR | `79999.00` | ~7% NULL — return in process |
+| `refund_mode` | VARCHAR(30) | Yes | How the refund was issued | `Bank Transfer` | Values: Original Payment Mode, Bank Transfer, Wallet Credit, Gift Card, UPI |
+| `is_replacement` | BOOLEAN | Yes | Whether customer chose replacement over refund | `false` | ~30% TRUE |
+| `processed_by` | VARCHAR(9) | Yes | Employee who processed the return | `EMP001234` | FK → `dim_employees.employee_id` |
+
+#### Return Reason Reference
+
+| Return Reason | Typical Action |
+|---|---|
+| Dead on Arrival | Full replacement |
+| Manufacturing Defect | Replacement or repair |
+| Damaged in Transit | Replacement + logistics claim |
+| Wrong Product | Exchange |
+| Product Not as Described | Refund |
+| Feature Not Working | Repair or replacement |
+| Better Price Elsewhere | Refund (price match policy) |
+| Changed Mind | Refund if within return window |
+| Size Mismatch | Exchange |
+| Duplicate Order | Full refund |
+
+---
+
+### 6.5 `fact_financial_transactions`
+
+**Purpose:** Every payment event processed by Samsung India — capturing payment mode, bank, GST rate, EMI tenure, and UPI reference for all channels.
+
+**Source:** `silver.fip_financial_transactions`
+**Primary Key:** `payment_id`
+**Row Grain:** One row = one payment event
+**Approximate Rows:** ~663,000
+
+> ⚠️ **Deduplication note:** The Bronze source contained ~2% duplicate payment rows. Removed in Silver. `payment_id` is unique in this Gold view.
+>
+> ⚠️ **Null column logic:** `emi_months` is only populated when `payment_mode = 'EMI'`. `upi_ref` is only populated when `payment_mode = 'UPI'`. Both are NULL for all other payment modes.
+
+#### Foreign Keys
+
+| Column | References | Join Type |
+|---|---|---|
+| `txn_id` | `fact_sales_transactions.txn_id` | LEFT JOIN |
+
+#### Column Reference
+
+| Column | Data Type | Nullable | Description | Example Value | Notes |
+|---|---|---|---|---|---|
+| `payment_id` | VARCHAR(11) | NOT NULL | Unique payment event identifier | `PAY00000001` | PK. Format: PAY + 8-digit number |
+| `txn_id` | VARCHAR(11) | NOT NULL | Associated sales transaction | `TXN00054321` | FK → `fact_sales_transactions.txn_id` |
+| `payment_date` | DATE | NOT NULL | Date payment was processed | `2024-10-21` | |
+| `payment_mode` | VARCHAR(20) | NOT NULL | Payment method | `Credit Card` | Values: UPI, Credit Card, Debit Card, Net Banking, EMI, Cash on Delivery, Wallet |
+| `amount_inr` | NUMERIC(12,2) | Yes | Payment amount in INR | `82999.00` | Cleaned — Bronze bad values ("-100", "abc") removed. ~2% NULL |
+| `gst_pct` | NUMERIC(4,1) | Yes | GST rate applied | `18.0` | Cleaned from 7 Bronze formats. Valid values: 5.0, 12.0, 18.0, 28.0 |
+| `bank_name` | VARCHAR(30) | Yes | Bank that processed the payment | `HDFC Bank` | 10 major Indian banks represented |
+| `emi_months` | SMALLINT | Yes | EMI tenure in months | `12` | Values: 3, 6, 9, 12, 18, 24. **NULL unless `payment_mode = 'EMI'`** |
+| `upi_ref` | VARCHAR(50) | Yes | UPI Virtual Payment Address | `priya42@okaxis` | **NULL unless `payment_mode = 'UPI'`**. ~6% NULL even for UPI rows |
+| `invoice_no` | VARCHAR(30) | Yes | Invoice / GST bill number | `INV/2024-25/0012345` | Format: INV/{FY}/{sequence}. ~5% NULL |
+| `payment_status` | VARCHAR(15) | NOT NULL | Payment outcome | `Success` | Values: Success (82%), Failed (5%), Pending (5%), Refunded (4%), Disputed (2%) |
+
+---
+
+### 6.6 `fact_product_reviews`
+
+**Purpose:** Customer product ratings and written reviews submitted for Samsung India products across all channels.
+
+**Source:** `silver.crm_product_reviews`
+**Primary Key:** `review_id`
+**Row Grain:** One row = one review submission
+**Approximate Rows:** 50,000
+
+#### Foreign Keys
+
+| Column | References | Join Type |
+|---|---|---|
+| `customer_id` | `dim_customers.customer_id` | INNER JOIN |
+| `product_id` | `dim_products.product_id` | INNER JOIN |
+
+#### Column Reference
+
+| Column | Data Type | Nullable | Description | Example Value | Notes |
+|---|---|---|---|---|---|
+| `review_id` | VARCHAR(10) | NOT NULL | Unique review identifier | `REV0000001` | PK. Format: REV + 7-digit number |
+| `customer_id` | VARCHAR(11) | NOT NULL | Customer who submitted the review | `CUST0001234` | FK → `dim_customers` |
+| `product_id` | VARCHAR(10) | NOT NULL | Product being reviewed | `PROD0002` | FK → `dim_products` |
+| `rating` | SMALLINT | NOT NULL | Star rating given | `4` | Range: 1–5. Out-of-range Bronze values (0, 6, -1) excluded in Silver cleaning. Distribution: 5★(37%), 4★(35%), 3★(15%), 2★(8%), 1★(5%) |
+| `review_text` | TEXT | Yes | Written review comment | `Camera quality is outstanding.` | Free-text. Useful for sentiment analysis |
+| `review_date` | DATE | NOT NULL | Date the review was submitted | `2024-08-14` | |
+| `verified_purchase` | BOOLEAN | Yes | Whether reviewer purchased the product | `true` | ~70% TRUE. Cleaned from 6 Bronze encodings |
+| `helpful_votes` | SMALLINT | NOT NULL | Number of users who found the review helpful | `47` | Range: 0–499. Default 0 |
+
+---
