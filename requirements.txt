@@ -1,0 +1,24 @@
+# ============================================================
+# Samsung — Data Engineering Project
+# Python Dependencies
+# ============================================================
+# Install all dependencies with:
+#     pip install -r requirements.txt
+#
+# Python version required: 3.10+
+# ============================================================
+
+
+# ── Data Manipulation & Analysis ────────────────────────────
+pandas>=2.0.0           # DataFrame operations, CSV read/write, data cleaning
+numpy>=1.24.0           # Vectorised data generation and numerical operations
+
+
+# ── File Format Handling ─────────────────────────────────────
+openpyxl>=3.1.0         # Read and write .xlsx files (campaigns, employees, inventory, returns)
+
+
+# ── PostgreSQL Database Connection ───────────────────────────
+psycopg2-binary>=2.9.0  # PostgreSQL adapter for Python (binary = no build tools needed)
+sqlalchemy>=2.0.0       # Database connection pooling and ORM utilities
+
