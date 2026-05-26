@@ -701,3 +701,219 @@ CASE WHEN qty_available <= reorder_level THEN 'Reorder Required' ELSE 'OK' END A
 | `helpful_votes` | SMALLINT | NOT NULL | Number of users who found the review helpful | `47` | Range: 0–499. Default 0 |
 
 ---
+
+## 7. 🔗 RELATIONSHIPS & JOIN GUIDE
+
+### Complete Relationship Map
+
+| Fact Table | Dimension Table | Join Column | Join Type |
+|---|---|---|---|
+| `fact_inventory` | `dim_products` | `product_id` | INNER JOIN |
+| `fact_inventory` | `dim_warehouses` | `warehouse_id` | LEFT JOIN |
+| `fact_sales_transactions` | `dim_customers` | `customer_id` | INNER JOIN |
+| `fact_sales_transactions` | `dim_products` | `product_id` | INNER JOIN |
+| `fact_sales_transactions` | `dim_dealers` | `dealer_id` | INNER JOIN |
+| `fact_complaints` | `dim_customers` | `customer_id` | INNER JOIN |
+| `fact_complaints` | `dim_products` | `product_id` | INNER JOIN |
+| `fact_complaints` | `dim_service_centers` | `center_id` | LEFT JOIN |
+| `fact_returns` | `fact_sales_transactions` | `txn_id` | LEFT JOIN |
+| `fact_returns` | `dim_customers` | `customer_id` | INNER JOIN |
+| `fact_returns` | `dim_products` | `product_id` | INNER JOIN |
+| `fact_returns` | `dim_employees` | `processed_by` | LEFT JOIN |
+| `fact_financial_transactions` | `fact_sales_transactions` | `txn_id` | LEFT JOIN |
+| `fact_product_reviews` | `dim_customers` | `customer_id` | INNER JOIN |
+| `fact_product_reviews` | `dim_products` | `product_id` | INNER JOIN |
+| `dim_employees` | `dim_employees` | `manager_id → employee_id` | LEFT JOIN (self) |
+
+### Standalone Dimensions
+
+`dim_suppliers` and `dim_campaigns` do not currently have direct foreign key relationships to any fact view. They are available for:
+
+- **Suppliers:** Procurement analysis by joining on `supplier_id` if a purchase-order fact table is added in the future.
+- **Campaigns:** Marketing attribution analysis by joining on `channel` or by overlapping `txn_date` with `start_date`/`end_date` (date-range join, not FK join).
+
+---
+
+## 8. 💻 SAMPLE QUERIES
+
+### Revenue Analysis
+
+```sql
+-- Monthly revenue by channel (Completed transactions only)
+SELECT
+    DATE_TRUNC('month', st.txn_date)  AS month,
+    st.channel,
+    COUNT(*)                          AS total_orders,
+    SUM(st.amount_inr)                AS gross_revenue_inr,
+    ROUND(AVG(st.amount_inr), 0)      AS avg_order_value_inr
+FROM gold.fact_sales_transactions st
+WHERE st.status = 'Completed'
+  AND st.txn_date BETWEEN '2024-01-01' AND '2024-12-31'
+GROUP BY DATE_TRUNC('month', st.txn_date), st.channel
+ORDER BY month, gross_revenue_inr DESC;
+```
+
+```sql
+-- Revenue by product category and customer segment
+SELECT
+    p.category,
+    c.segment,
+    COUNT(st.txn_id)      AS orders,
+    SUM(st.amount_inr)    AS revenue_inr
+FROM gold.fact_sales_transactions st
+JOIN gold.dim_products  p ON st.product_id  = p.product_id
+JOIN gold.dim_customers c ON st.customer_id = c.customer_id
+WHERE st.status = 'Completed'
+GROUP BY p.category, c.segment
+ORDER BY revenue_inr DESC;
+```
+
+### After-Sales Analysis
+
+```sql
+-- Monthly complaint resolution rate and average CSAT
+SELECT
+    DATE_TRUNC('month', complaint_date)   AS month,
+    COUNT(*)                              AS total_complaints,
+    COUNT(*) FILTER (WHERE status IN ('Resolved','Closed')) AS resolved,
+    ROUND(COUNT(*) FILTER (WHERE status IN ('Resolved','Closed'))
+        * 100.0 / COUNT(*), 1)            AS resolution_rate_pct,
+    ROUND(AVG(csat_score), 2)             AS avg_csat,
+    ROUND(AVG(resolution_days), 1)        AS avg_days_to_resolve
+FROM gold.fact_complaints
+WHERE complaint_date >= '2024-01-01'
+GROUP BY DATE_TRUNC('month', complaint_date)
+ORDER BY month;
+```
+
+```sql
+-- Return rate by product category
+SELECT
+    p.category,
+    COUNT(st.txn_id) FILTER (WHERE st.status = 'Completed') AS completed_sales,
+    COUNT(r.return_id)                                        AS total_returns,
+    ROUND(COUNT(r.return_id) * 100.0
+        / NULLIF(COUNT(st.txn_id) FILTER (WHERE st.status = 'Completed'), 0), 2) AS return_rate_pct
+FROM gold.fact_sales_transactions st
+JOIN gold.dim_products  p  ON st.product_id = p.product_id
+LEFT JOIN gold.fact_returns r ON st.txn_id  = r.txn_id
+GROUP BY p.category
+ORDER BY return_rate_pct DESC;
+```
+
+### Customer Analysis
+
+```sql
+-- Top 10 customers by lifetime value with complaint and return counts
+SELECT
+    c.customer_id,
+    c.full_name,
+    c.segment,
+    c.city,
+    COUNT(st.txn_id) FILTER (WHERE st.status = 'Completed') AS completed_orders,
+    SUM(st.amount_inr) FILTER (WHERE st.status = 'Completed') AS lifetime_value_inr,
+    COUNT(DISTINCT comp.complaint_id)                          AS total_complaints,
+    COUNT(DISTINCT ret.return_id)                              AS total_returns
+FROM gold.dim_customers c
+LEFT JOIN gold.fact_sales_transactions st   ON c.customer_id = st.customer_id
+LEFT JOIN gold.fact_complaints         comp ON c.customer_id = comp.customer_id
+LEFT JOIN gold.fact_returns            ret  ON c.customer_id = ret.customer_id
+GROUP BY c.customer_id, c.full_name, c.segment, c.city
+ORDER BY lifetime_value_inr DESC NULLS LAST
+LIMIT 10;
+```
+
+### Inventory Analysis
+
+```sql
+-- Products below reorder level (requires immediate restocking)
+SELECT
+    p.product_name,
+    p.category,
+    w.warehouse_name,
+    w.city,
+    i.qty_available,
+    i.reorder_level,
+    i.qty_available - i.reorder_level AS stock_gap,
+    i.last_restocked
+FROM gold.fact_inventory i
+JOIN gold.dim_products   p ON i.product_id   = p.product_id
+JOIN gold.dim_warehouses w ON i.warehouse_id = w.warehouse_id
+WHERE i.qty_available <= i.reorder_level
+  AND i.snapshot_date = (SELECT MAX(snapshot_date) FROM gold.fact_inventory)
+ORDER BY stock_gap ASC;
+```
+
+### Financial Analysis
+
+```sql
+-- Payment mode breakdown with success rates
+SELECT
+    payment_mode,
+    COUNT(*)                                                         AS total_payments,
+    COUNT(*) FILTER (WHERE payment_status = 'Success')              AS successful,
+    ROUND(COUNT(*) FILTER (WHERE payment_status = 'Success')
+        * 100.0 / COUNT(*), 2)                                      AS success_rate_pct,
+    SUM(amount_inr) FILTER (WHERE payment_status = 'Success')       AS total_revenue_inr,
+    ROUND(AVG(amount_inr) FILTER (WHERE payment_status = 'Success'),0) AS avg_txn_value_inr
+FROM gold.fact_financial_transactions
+GROUP BY payment_mode
+ORDER BY total_revenue_inr DESC NULLS LAST;
+```
+
+---
+
+## 9. 📋 DATA GOVERNANCE
+
+### Refresh & Latency
+
+| Aspect | Detail |
+|---|---|
+| **Implementation** | PostgreSQL Views — no physical storage |
+| **Latency** | Real-time (Gold reads live from Silver on every query) |
+| **Refresh required** | No — views auto-reflect Silver updates instantly |
+| **Silver refresh frequency** | Daily (after Bronze ingestion and cleaning pipeline) |
+| **Full pipeline run time** | ~5–10 minutes (Bronze generation → Silver cleaning → Gold available) |
+
+### Data Quality Guarantees at Gold Layer
+
+By the time data reaches Gold views, the following have been applied in Silver:
+
+| Guarantee | Applied In |
+|---|---|
+| ✅ All date columns parsed to DATE type | Silver cleaning (`fn_parse_date`) |
+| ✅ Phone numbers standardised to 10-digit | Silver cleaning (`fn_clean_phone`) |
+| ✅ Salary values normalised to annual INR | Silver cleaning (`fn_salary_to_annual`) |
+| ✅ GST strings parsed to numeric percentage | Silver cleaning (`fn_parse_gst_pct`) |
+| ✅ Boolean columns standardised to TRUE/FALSE | Silver cleaning (`fn_to_boolean`) |
+| ✅ Duplicate returns rows deduplicated | Silver cleaning (ROW_NUMBER) |
+| ✅ Duplicate payment rows deduplicated | Silver cleaning (ROW_NUMBER) |
+| ✅ Negative inventory quantities removed | Silver cleaning (GREATEST(qty, 0)) |
+| ✅ Out-of-range ratings excluded | Silver cleaning (WHERE rating BETWEEN 1 AND 5) |
+| ✅ Category casing normalised | Silver cleaning (INITCAP) |
+
+### Known Limitations
+
+**NULL values in Gold are intentional** — they represent genuinely missing data after cleaning, not Bronze messiness. For example, `dim_customers.email` is NULL for ~2% of rows because those emails were duplicated in Bronze and nulled in Silver. Do not attempt to backfill these NULLs without a data steward review.
+
+**`dim_suppliers` and `dim_campaigns` are standalone** — no FK joins to fact tables. Campaign attribution analysis requires a date-range join on `fact_sales_transactions.txn_date`, not an FK join.
+
+**`fact_returns.txn_id` may not match** — some returns reference a `txn_id` that no longer exists in `fact_sales_transactions` if the original transaction was cleaned out. Use LEFT JOIN when joining returns to sales.
+
+### Ownership
+
+| Domain | Owner | Silver Prefix |
+|---|---|---|
+| Product & HR | HRM Team | `hrm_` |
+| Supply Chain | Supply Chain Team | `sci_` |
+| After-Sales | Service Operations | `as2_` |
+| Customer & Reviews | CRM Team | `crm_` |
+| Sales & Dealers | Sales Operations | `snd_` |
+| Finance & Payments | Finance Team | `fip_` |
+
+> **This catalog covers the Gold layer as of the current DDL version. All data is synthetic and generated for data engineering practice. No real customer, employee, or financial records are represented.**
+
+---
+
+**👤 Prepared by Harsh Belekar — Samsung Data Engineering Project**
+*Pipeline: Raw Generation → Bronze Ingestion → Silver Cleaning → Gold Analytics*
