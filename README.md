@@ -505,7 +505,131 @@ All database objects follow consistent naming standards documented in [`Docs/Nam
 
 ---
 
+## 9. ▶️ Pipeline Execution Guide
 
+### Prerequisites
+
+- Python 3.10 or higher
+- PostgreSQL 14 or higher (running locally or on a server)
+- A PostgreSQL user with `CREATE DATABASE` privileges
+
+### Step 1 — Clone the Repository
+
+```bash
+git clone https://github.com/Harsh-Belekar/Samsung-Data-Engineering.git
+cd "Samsung Data Engineering"
+```
+
+### Step 2 — Install Python Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### Step 3 — Configure Database Connection
+
+Update the connection settings in the Python scripts or create a `.env` file:
+
+```
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=Samsung_Data_Warehouse
+```
+
+### Step 4 — Generate the Data
+
+```bash
+cd "Data Generation"
+python Main.py
+cd ..
+```
+
+### Step 5 — Convert JSON & XLSX to CSV
+
+```bash
+python "Python Scripts/File_converter.py"
+```
+
+### Step 6 — Run the Full Pipeline
+
+**Option A — Python Scripts (recommended)**
+
+```bash
+python "Python Scripts/Init_database.py"
+python "Python Scripts/Bronze/DDL_Bronze.py"
+python "Python Scripts/Bronze/Load_Bronze.py"
+python "Python Scripts/Silver/DDL_Silver.py"
+python "Python Scripts/Silver/Load_Silver.py"
+python "Python Scripts/Gold/DDL_Gold.py"
+```
+
+**Option B — SQL Scripts**
+
+```sql
+-- Run in order in your PostgreSQL client or psql
+\i 'SQL Scripts/Init_database.sql'
+\i 'SQL Scripts/Bronze/DDL_Bronze.sql'
+\i 'SQL Scripts/Bronze/Proc_Load_Bronze.sql'
+CALL load_bronze();
+\i 'SQL Scripts/Silver/DDL_Silver.sql'
+\i 'SQL Scripts/Silver/Helper_function.sql'
+\i 'SQL Scripts/Silver/Proc_Load_Silver.sql'
+CALL load_silver();
+\i 'SQL Scripts/Gold/DDL_Gold.sql'
+```
+
+### Step 7 — Verify the Pipeline
+
+```sql
+-- Check row counts across all three layers
+SELECT 'bronze' AS layer, 'crm_customers' AS table_name, COUNT(*) FROM bronze.crm_customers
+UNION ALL
+SELECT 'silver', 'crm_customers', COUNT(*) FROM silver.crm_customers
+UNION ALL
+SELECT 'gold',   'dim_customers', COUNT(*) FROM gold.dim_customers;
+```
+
+---
+
+## 10. 📄 Project Documentation
+
+| Document | Location | Description |
+|---|---|---|
+| **Data Generation Guide** | `Docs/Data_Generation_Documentation.md` | How to configure and run the data generator — row counts, date ranges, quality parameters, and extending the project |
+| **Gold Layer Data Catalog** | `Docs/Data_Catalog.md` | Full reference for all 14 Gold views — purpose, grain, column definitions, data types, example values, and join relationships |
+| **Naming Conventions** | `Docs/Naming_Conventions.md` | Standards for all schema, table, view, column, and stored procedure naming across all three layers |
+| **Architecture Diagram** | `Images/Data_Warehouse_Architecture.png` | Visual overview of the full Bronze → Silver → Gold pipeline with source systems and consumers |
+| **Schema Diagram** | `Images/Schema.png` | Entity-relationship diagram showing how all 14 tables connect through primary and foreign keys |
+
+---
+
+## 11. 📋 Logs
+
+Every stage of the pipeline produces a dedicated log file in the `Logs/` folder. Each log captures start time, completion status, row counts, and any errors encountered.
+
+| Log File | Pipeline Stage | Script |
+|---|---|---|
+| `Data_generation.log` | Synthetic data generation | `Data Generation/Main.py` |
+| `Init_database.log` | Schema creation | `Python Scripts/Init_database.py` |
+| `DDL_Bronze.log` | Bronze table creation | `Python Scripts/Bronze/DDL_Bronze.py` |
+| `Load_Bronze.log` | Bronze data loading | `Python Scripts/Bronze/Load_Bronze.py` |
+| `DDL_Silver.log` | Silver table creation | `Python Scripts/Silver/DDL_Silver.py` |
+| `Helper_func.log` | Cleaning function creation | `Python Scripts/Silver/Helper_func.py` |
+| `Load_Silver.log` | Silver data cleaning & loading | `Python Scripts/Silver/Load_Silver.py` |
+| `DDL_Gold.log` | Gold view creation | `Python Scripts/Gold/DDL_Gold.py` |
+
+> SQL Scripts produce the same transformations as Python Scripts but do not write to the `Logs/` folder — the Python implementation serves as the canonical log source.
+
+---
+
+# ⚠️ Dataset Disclaimer  
+
+All datasets used in this project are **dummy, synthetic, or public** — generated programmatically using Python for learning and portfolio demonstration purposes only.
+
+**No real customer data, restaurant data, or proprietary Samsung information has been used.**
+This project is not affiliated with, endorsed by, or connected to Samsung in any way.
 
 ---
 
