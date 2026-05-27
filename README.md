@@ -258,6 +258,253 @@ pip install -r requirements.txt
 
 ---
 
+## 7. 🔄 Project Workflow — Step by Step
+
+### Phase 1 — Synthetic Data Generation
+
+The project begins with generating a realistic, messy dataset that simulates Samsung India's operational data.
+
+**Entry point:** `Data Generation/Main.py`
+
+```bash
+cd "Data Generation"
+python Main.py
+```
+
+**What happens:**
+- `Config.py` sets the date range (2022–2025), row counts per table, and data quality parameters
+- `Master_data.py` provides all static lookup data — Indian names, cities, Samsung product SKUs, payment modes, etc.
+- `Utils.py` provides shared helper functions — `rnd_phone()`, `rnd_date()`, `add_messy()`, `fn_to_boolean()`
+- Each generator class in `Generators/` produces one or two tables and exposes its generated ID pool for use as foreign keys in downstream tables
+- All 14 files are generated in order of dependency and saved to the `Data/` domain folders
+
+**Dependency chain (generation order must be preserved):**
+```
+Products → Warehouses → Customers → Dealers →
+Service Centers → Campaigns → Suppliers → Employees →
+Inventory → Sales Transactions → Complaints →
+Returns → Financial Transactions → Product Reviews
+```
+
+> For full configuration options and parameter reference, see [`Docs/Data_Generation_Documentation.md`](Docs/Data_Generation_Documentation.md)
+
+---
+
+### Phase 2 — Database Setup
+
+**File Conversion**
+
+Some source files are in JSON and XLSX format. `File_converter.py` converts all of them to CSV before loading — ensuring a single, consistent ingestion format for the warehouse pipeline.
+
+```bash
+python "Python Scripts/File_converter.py"
+```
+
+**Database and Schema Initialisation**
+
+Creates the `Samsung_Data_Warehouse` PostgreSQL database and the three schemas: `bronze`, `silver`, and `gold`.
+
+```bash
+# Python
+python "Python Scripts/Init_database.py"
+
+# SQL equivalent
+psql -U <user> -f "SQL Scripts/Init_database.sql"
+```
+
+Log: `Logs/Init_database.log`
+
+---
+
+### Phase 3 — Bronze Layer
+
+The Bronze layer ingests raw data **exactly as it is** — no type casting, no cleaning, no transformations. All columns are stored as `TEXT`. This preserves the original data integrity and provides a full audit trail.
+
+**Step 1 — Create Bronze Tables (DDL)**
+
+Creates 14 tables in the `bronze` schema. All columns are `TEXT` to accept any raw value without rejection.
+
+```bash
+# Python
+python "Python Scripts/Bronze/DDL_Bronze.py"
+
+# SQL equivalent
+psql -U <user> -d Samsung_Data_Warehouse -f "SQL Scripts/Bronze/DDL_Bronze.sql"
+```
+
+Log: `Logs/DDL_Bronze.log`
+
+**Step 2 — Load Bronze Tables**
+
+Reads the CSV files from each domain folder and inserts them into the Bronze tables using a **Truncate & Insert (Full Load)** strategy.
+
+```bash
+# Python
+python "Python Scripts/Bronze/Load_Bronze.py"
+
+# SQL equivalent (Stored Procedure)
+psql -U <user> -d Samsung_Data_Warehouse -f "SQL Scripts/Bronze/Proc_Load_Bronze.sql"
+CALL load_bronze();
+```
+
+Log: `Logs/Load_Bronze.log`
+
+**Bronze Table Naming:** `<sourcesystem>_<entity>`
+Example: `bronze.crm_customers`, `bronze.snd_sales_transactions`
+
+---
+
+### Phase 4 — Silver Layer
+
+The Silver layer transforms Bronze data into **clean, typed, and standardised** tables. This is where all data quality issues are resolved.
+
+**Cleaning operations performed:**
+- Mixed date formats → `DATE` type (6 format variants handled)
+- Phone prefixes (+91, leading 0) → 10-digit standard format
+- Mixed boolean encodings (Yes/No/1/0/True/False) → `BOOLEAN`
+- Salary formats ("18 LPA" / "150000" monthly / "18L") → Annual INR `NUMERIC`
+- GST strings ("18%" / "18" / "GST@18") → Numeric percentage
+- Category casing errors → Title Case canonical values
+- Duplicate rows in `returns` and `financial_transactions` → Deduplicated
+- Out-of-range values (negative stock, invalid ratings) → Cleaned or excluded
+- Null standardisation → Genuine NULLs preserved, bad values removed
+
+**Step 1 — Create Silver Tables (DDL)**
+
+Creates 14 tables in the `silver` schema with proper data types, `NOT NULL` constraints, `CHECK` constraints, and foreign keys.
+
+```bash
+# Python
+python "Python Scripts/Silver/DDL_Silver.py"
+
+# SQL equivalent
+psql -U <user> -d Samsung_Data_Warehouse -f "SQL Scripts/Silver/DDL_Silver.sql"
+```
+
+Log: `Logs/DDL_Silver.log`
+
+**Step 2 — Create Helper Functions**
+
+Creates shared data cleaning functions used by the Silver loading process.
+
+```bash
+# Python (module imported by Load_Silver.py)
+# Helper_func.py is not run standalone — it is imported by Load_Silver.py
+
+# SQL equivalent
+psql -U <user> -d Samsung_Data_Warehouse -f "SQL Scripts/Silver/Helper_function.sql"
+```
+
+Log: `Logs/Helper_func.log`
+
+Key functions created:
+
+| Function | Purpose |
+|---|---|
+| `fn_to_boolean(raw_val)` | Converts Yes/No/1/0/True/False → BOOLEAN |
+| `fn_clean_phone(raw_phone)` | Strips +91 / leading 0 → 10-digit CHAR |
+| `fn_parse_date(raw_date)` | Parses 6 mixed date formats → DATE |
+| `fn_parse_epoch_or_date(val)` | Converts Unix epoch strings → DATE |
+| `fn_parse_gst_pct(raw_gst)` | Parses all GST string formats → NUMERIC |
+| `fn_salary_to_annual(raw_salary)` | Converts LPA / monthly / shorthand → Annual INR |
+
+**Step 3 — Load Silver Tables**
+
+Reads from Bronze tables, applies all cleaning transformations, deduplicates where needed, and inserts into Silver tables.
+
+```bash
+# Python
+python "Python Scripts/Silver/Load_Silver.py"
+
+# SQL equivalent (Stored Procedure)
+psql -U <user> -d Samsung_Data_Warehouse -f "SQL Scripts/Silver/Proc_Load_Silver.sql"
+CALL load_silver();
+```
+
+Log: `Logs/Load_Silver.log`
+
+**Silver Table Naming:** `<sourcesystem>_<entity>`
+Example: `silver.crm_customers`, `silver.snd_sales_transactions`
+
+---
+
+### Phase 5 — Gold Layer
+
+The Gold layer exposes **business-ready data** as PostgreSQL `VIEWS` — no physical storage, no load process. Every Gold view reads live, cleaned data from the Silver layer and presents it in a **Star Schema** structure optimised for analytics and reporting.
+
+**Star Schema structure:**
+
+| Type | Count | Examples |
+|---|---|---|
+| Dimension Views (`dim_`) | 8 | `dim_products`, `dim_customers`, `dim_employees` |
+| Fact Views (`fact_`) | 6 | `fact_sales_transactions`, `fact_complaints`, `fact_returns` |
+
+**Create Gold Views (DDL)**
+
+```bash
+# Python
+python "Python Scripts/Gold/DDL_Gold.py"
+
+# SQL equivalent
+psql -U <user> -d Samsung_Data_Warehouse -f "SQL Scripts/Gold/DDL_Gold.sql"
+```
+
+Log: `Logs/DDL_Gold.log`
+
+**Gold View Naming:** `<category>_<entity>`
+Examples: `gold.dim_customers`, `gold.fact_sales_transactions`
+
+**Gold layer consumers:**
+
+| Tool | Use Case |
+|---|---|
+| **Power BI** | Interactive dashboards and KPI reports |
+| **QuickBI** | Business intelligence and self-service analytics |
+| **Tableau** | Advanced data visualisation |
+| **Python / Jupyter** | Data analysis and machine learning |
+| **SQL Clients** | Ad-hoc analysis by data and business analysts |
+
+> For a full reference of all 14 Gold views — their purpose, column definitions, data types, and join relationships — see [`Docs/Data_Catalog.md`](Docs/Data_Catalog.md)
+
+---
+
+## 8. 📐 Naming Conventions
+
+All database objects follow consistent naming standards documented in [`Docs/Naming_Conventions.md`](Docs/Naming_Conventions.md).
+
+### Table / View Naming
+
+| Layer | Pattern | Example |
+|---|---|---|
+| Bronze | `<sourcesystem>_<entity>` | `bronze.crm_customers` |
+| Silver | `<sourcesystem>_<entity>` | `silver.hrm_employees` |
+| Gold | `<category>_<entity>` | `gold.dim_customers` |
+
+### Gold Category Prefixes
+
+| Prefix | Meaning | Example |
+|---|---|---|
+| `dim_` | Dimension table | `dim_products`, `dim_customers` |
+| `fact_` | Fact table | `fact_sales_transactions` |
+| `agg_` | Aggregated table | `agg_monthly_revenue` |
+
+### Column Naming
+
+| Type | Pattern | Example |
+|---|---|---|
+| Surrogate keys | `<tablename>_key` | `customer_key` |
+| Technical / metadata columns | `dwh_<column_name>` | `dwh_load_date` |
+
+### Stored Procedures
+
+| Pattern | Example |
+|---|---|
+| `load_<layer>` | `load_bronze`, `load_silver` |
+
+> All names use `snake_case` with lowercase letters. No SQL reserved words used as object names.
+
+---
+
 
 
 ---
