@@ -194,6 +194,70 @@ Samsung Data Engineering/
 
 ---
 
+## 4. 🗂️ Data Domains
+
+The 14 source tables are organised into **6 business domains**, each stored in its own subfolder inside `Data/`. The domain prefix is carried through all three warehouse layers as part of the naming convention.
+
+| Domain | Prefix | Business Area | Tables |
+|---|---|---|---|
+| After-Sales Service | `AS2` | Complaints, Returns, Service Centres | `complaints`, `returns`, `service_centers` |
+| Customer Relationship | `CRM` | Customers, Reviews | `customers`, `product_reviews` |
+| Finance & Payments | `FIP` | Payments, GST, EMI | `financial_transactions` |
+| Human Resources & Marketing | `HRM` | Products, Employees, Campaigns | `products`, `employees`, `campaigns` |
+| Supply Chain & Inventory | `SCI` | Warehouses, Suppliers, Inventory | `warehouses`, `suppliers`, `inventory` |
+| Sales & Distribution | `SND` | Dealers, Sales Transactions | `dealers`, `sales_transactions` |
+
+---
+
+## 5. 📊 Dataset Overview
+
+All data is **synthetically generated** using the custom Python pipeline in the `Data Generation/` folder. It simulates Samsung India's real-world business operations across 2022–2025.
+
+| # | Table | Domain | Format | Approx. Rows | Description |
+|---|---|---|---|---|---|
+| 1 | `products` | HRM | JSON / CSV | 2,000 | Samsung India product catalogue |
+| 2 | `warehouses` | SCI | JSON / CSV | 25 | National warehouse master |
+| 3 | `service_centers` | AS2 | JSON / CSV | 1,200 | Authorised service centres |
+| 4 | `customers` | CRM | CSV | 200,000 | Registered customer master |
+| 5 | `dealers` | SND | CSV | 10,000 | Retail dealer and partner master |
+| 6 | `suppliers` | SCI | CSV | 500 | Component and logistics suppliers |
+| 7 | `campaigns` | HRM | XLSX / CSV | 1,000 | Marketing campaign master |
+| 8 | `employees` | HRM | XLSX / CSV | 15,000 | Employee HR master |
+| 9 | `inventory` | SCI | XLSX / CSV | 100,000 | Daily inventory snapshots |
+| 10 | `sales_transactions` | SND | CSV | 750,000 | Primary sales fact table |
+| 11 | `complaints` | AS2 | CSV | 200,000 | After-sales complaint cases |
+| 12 | `returns` | AS2 | XLSX / CSV | ~77,250 | Product returns (+3% duplicates) |
+| 13 | `financial_transactions` | FIP | CSV | ~663,000 | Payment ledger (+2% duplicates) |
+| 14 | `product_reviews` | CRM | CSV | 50,000 | Customer product ratings |
+
+> **Total: ~2,070,000 rows across 14 tables spanning 6 business domains and 4 years (2022–2025)**
+
+The raw data intentionally contains **real-world data quality issues** — mixed date formats, null values, duplicate rows, casing errors, and invalid values — to make the Silver layer cleaning pipeline meaningful and realistic.
+
+---
+
+## 6. 🛠️ Tech Stack
+
+| Tool / Technology | Version | Purpose |
+|---|---|---|
+| **Python** | 3.10+ | Data generation, pipeline orchestration, data cleaning |
+| **PostgreSQL** | 14+ | Data warehouse database engine |
+| **Pandas** | 2.0+ | DataFrame manipulation and CSV I/O |
+| **NumPy** | 1.24+ | Vectorised data generation |
+| **openpyxl** | 3.1+ | Reading and writing XLSX files |
+| **psycopg2** | 2.9+ | PostgreSQL connection from Python |
+| **SQLAlchemy** | 2.0+ | ORM and database connection pooling |
+| **SQL** | PostgreSQL dialect | DDL, stored procedures, helper functions |
+| **Power BI** | Latest | Dashboard and reporting (Gold layer consumer) |
+
+Install all Python dependencies with:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
 
 
 ---
